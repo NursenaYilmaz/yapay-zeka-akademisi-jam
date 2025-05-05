@@ -8,6 +8,8 @@ from app.db.database import get_db
 from app.models import user as user_model
 import bcrypt
 from fastapi.security import OAuth2PasswordBearer
+from fastapi_jwt_auth import AuthJWT
+from fastapi_jwt_auth.exceptions import AuthJWTException
 
 router = APIRouter()
 
@@ -61,25 +63,41 @@ class UserLogin(BaseModel):
     password: str
 
 @router.post("/login")
-def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
+def login_user(user_data: UserLogin, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
     user = db.query(user_model.User).filter(user_model.User.username == user_data.username).first()
 
     if not user or not bcrypt.checkpw(user_data.password.encode('utf-8'), user.password.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Geçersiz kullanıcı adı veya şifre.")
 
+   
+    access_token = Authorize.create_access_token(subject=str(user.id))
+
     return {
         "message": "Giriş başarılı!",
+        "access_token": access_token,
         "user_id": user.id,
         "username": user.username,
         "is_teacher": user.teacher_id is None
     }
 
-@router.get("/teacher/{teacher_id}/students", dependencies=[Depends(teacher_only)])
-def get_students_by_teacher(teacher_id: int, db: Session = Depends(get_db)):
-    students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
+@router.get("/teacher/{teacher_id}/students")
+def get_students_by_teacher(
+    teacher_id: int,
+    Authorize: AuthJWT = Depends(),
+    db: Session = Depends(get_db)
+):
+    try:
+        Authorize.jwt_required()
+    except AuthJWTException as e:
+        raise HTTPException(status_code=401, detail="Token geçersiz")
 
-    if not students:
-        raise HTTPException(status_code=404, detail="Bu öğretmene bağlı öğrenci bulunamadı.")
+    current_user_id = int(Authorize.get_jwt_subject())
+    current_user = db.query(user_model.User).filter(user_model.User.id == current_user_id).first()
+
+    if not current_user or current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Bu verilere erişim yetkiniz yok.")
+
+    students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
 
     return [
         {
@@ -89,9 +107,15 @@ def get_students_by_teacher(teacher_id: int, db: Session = Depends(get_db)):
         for student in students
     ]
 
-@router.get("/auth/user-info/{user_id}")
-def get_user_info(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(user_model.User).filter(user_model.User.id == user_id).first()
+@router.get("/auth/user-info")
+def get_user_info(Authorize: AuthJWT = Depends(), db: Session = Depends(get_db)):
+    try:
+        Authorize.jwt_required()
+    except AuthJWTException as e:
+        raise HTTPException(status_code=401, detail="Yetkisiz")
+
+    current_user_id = Authorize.get_jwt_subject()
+    user = db.query(user_model.User).filter(user_model.User.id == int(current_user_id)).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
@@ -99,8 +123,8 @@ def get_user_info(user_id: int, db: Session = Depends(get_db)):
     return {
         "user_id": user.id,
         "username": user.username,
-        "is_teacher": user.teacher_id is None,
-        "teacher_id": user.teacher_id
+        "teacher_id": user.teacher_id,
+        "is_teacher": user.teacher_id is None
     }
 
 class PasswordUpdateRequest(BaseModel):
