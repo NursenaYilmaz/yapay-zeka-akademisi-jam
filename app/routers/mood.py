@@ -8,7 +8,7 @@ from collections import Counter
 from pydantic import BaseModel
 from typing import List
 from app.models import user as user_model
-
+from .auth import get_current_user, student_from_teacher, same_class_check, teacher_owns_class
 
 router = APIRouter()
 
@@ -35,7 +35,18 @@ from datetime import datetime, date
 from sqlalchemy import and_
 
 @router.post("/submit")
-def submit_mood_test(test_data: MoodTestInput, db: Session = Depends(get_db)):
+def submit_mood_test(
+    test_data: MoodTestInput, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Sadece kendi ruh halini gönderebilsin
+    if current_user.id != test_data.user_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi ruh halinizi gönderebilirsiniz.")
+    
+    # Aynı sınıfa ait olup olmadığını kontrol et
+    same_class_check(test_data.user_id, test_data.class_id, db)
+    
     today = date.today()
 
     # Aynı gün içinde aynı kullanıcı ve sınıf için daha önce test yapılmış mı kontrol et
@@ -71,10 +82,19 @@ def submit_mood_test(test_data: MoodTestInput, db: Session = Depends(get_db)):
         "message": "Ruh hali başarıyla kaydedildi!"
     }
 
-
-# 2️⃣ Sınıfa özel özet + şablon önerisi
 @router.get("/class/{class_id}/summary")
-def get_class_summary(class_id: int, db: Session = Depends(get_db)):
+def get_class_summary(
+    class_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Öğretmen mi kontrol et
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Bu sınıfı yönetip yönetmediğini kontrol et
+    teacher_owns_class(current_user.id, class_id, db)
+    
     entries = db.query(mood_model.MoodEntry).filter(mood_model.MoodEntry.class_id == class_id).all()
 
     if not entries:
@@ -99,9 +119,19 @@ def get_class_summary(class_id: int, db: Session = Depends(get_db)):
         "suggested_template": template
     }
 
-# 3️⃣ Ruh hali önerisi
 @router.get("/class/{class_id}/recommendation")
-def get_recommendation_for_class(class_id: int, db: Session = Depends(get_db)):
+def get_recommendation_for_class(
+    class_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Öğretmen mi kontrol et
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Bu sınıfı yönetip yönetmediğini kontrol et
+    teacher_owns_class(current_user.id, class_id, db)
+    
     entries = db.query(mood_model.MoodEntry).filter(mood_model.MoodEntry.class_id == class_id).all()
 
     if not entries:
@@ -123,9 +153,19 @@ def get_recommendation_for_class(class_id: int, db: Session = Depends(get_db)):
         "recommendation": recommendations.get(common_mood, "Genel bir öneri mevcut değil.")
     }
 
-# 4️⃣ Yalnızca sınıf özeti (şablonsuz)
 @router.get("/class-summary/{class_id}")
-def get_class_mood_summary(class_id: int, db: Session = Depends(get_db)):
+def get_class_mood_summary(
+    class_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Öğretmen mi kontrolü veya öğrenci mi kontrolü
+    if current_user.teacher_id is None:  # Öğretmen ise
+        teacher_owns_class(current_user.id, class_id, db)
+    else:  # Öğrenci ise
+        if current_user.class_id != class_id:
+            raise HTTPException(status_code=403, detail="Sadece kendi sınıfınızı görebilirsiniz.")
+    
     entries = db.query(mood_model.MoodEntry).filter(mood_model.MoodEntry.class_id == class_id).all()
 
     if not entries:
@@ -142,7 +182,19 @@ def get_class_mood_summary(class_id: int, db: Session = Depends(get_db)):
     }
 
 @router.get("/history/{user_id}")
-def get_user_mood_history(user_id: int, db: Session = Depends(get_db)):
+def get_user_mood_history(
+    user_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Öğrenci sadece kendi verisini görebilir
+    if current_user.teacher_id is not None and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi ruh hali geçmişinizi görebilirsiniz.")
+    
+    # Öğretmen sadece kendi öğrencilerinin verisini görebilir
+    if current_user.teacher_id is None:
+        student_from_teacher(current_user.id, user_id, db)
+    
     entries = db.query(mood_model.MoodEntry).filter(
         mood_model.MoodEntry.user_id == user_id
     ).order_by(mood_model.MoodEntry.timestamp.desc()).all()
@@ -160,7 +212,19 @@ def get_user_mood_history(user_id: int, db: Session = Depends(get_db)):
     ]
 
 @router.get("/mood-history/{user_id}/chart")
-def get_mood_chart_data(user_id: int, db: Session = Depends(get_db)):
+def get_mood_chart_data(
+    user_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Öğrenci sadece kendi verisini görebilir
+    if current_user.teacher_id is not None and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi ruh hali geçmişinizi görebilirsiniz.")
+    
+    # Öğretmen sadece kendi öğrencilerinin verisini görebilir
+    if current_user.teacher_id is None:
+        student_from_teacher(current_user.id, user_id, db)
+    
     entries = db.query(mood_model.MoodEntry).filter(
         mood_model.MoodEntry.user_id == user_id
     ).order_by(mood_model.MoodEntry.timestamp.asc()).all()
@@ -182,55 +246,20 @@ def get_mood_chart_data(user_id: int, db: Session = Depends(get_db)):
         "mood_data": mood_data
     }
 
-@router.get("/user/{user_id}/chart-data")
-def get_user_mood_chart_data(user_id: int, db: Session = Depends(get_db)):
-    entries = db.query(mood_model.MoodEntry).filter(
-        mood_model.MoodEntry.user_id == user_id
-    ).order_by(mood_model.MoodEntry.timestamp).all()
-
-    if not entries:
-        raise HTTPException(status_code=404, detail="Bu kullanıcı için ruh hali geçmişi bulunamadı.")
-
-    labels = [entry.timestamp.strftime("%Y-%m-%d") for entry in entries]
-    scores = [entry.score for entry in entries]
-    moods = [entry.mood for entry in entries]
-
-    return {
-        "user_id": user_id,
-        "labels": labels,
-        "scores": scores,
-        "moods": moods
-    }
-
-@router.get("/history/{user_id}")
-def get_user_mood_history(
-    user_id: int,
-    current_user_id: int,  # Gerçek sistemde JWT token ile alınır
+@router.get("/teacher/{teacher_id}/student-latest-moods")
+def get_teacher_students_latest_moods(
+    teacher_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Erişim kontrolü
-    if user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="Başka bir kullanıcının verisine erişim izniniz yok.")
+    # Sadece öğretmenlerin erişmesini sağla
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Sadece kendi öğrencilerini görebilsin
+    if current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi öğrencilerinizi görebilirsiniz.")
 
-    entries = db.query(mood_model.MoodEntry).filter(mood_model.MoodEntry.user_id == user_id).all()
-
-    if not entries:
-        return {"message": "Henüz ruh hali kaydınız bulunmamaktadır."}
-
-    return [
-        {
-            "timestamp": entry.timestamp,
-            "score": entry.score,
-            "mood": entry.mood
-        }
-        for entry in entries
-    ]
-
-@router.get("/teacher/{teacher_id}/student-latest-moods")
-def get_teacher_students_latest_moods(teacher_id: int, db: Session = Depends(get_db)):
-    from app.models import user as user_model
-
-    # Bu öğretmene bağlı tüm öğrencileri bul
     students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
 
     if not students:
@@ -257,17 +286,19 @@ def get_teacher_students_latest_moods(teacher_id: int, db: Session = Depends(get
 def get_student_history_by_teacher(
     teacher_id: int,
     student_id: int,
+    current_user: user_model.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Önce öğrencinin bu öğretmene bağlı olup olmadığını kontrol et
-    from app.models import user as user_model
-    student = db.query(user_model.User).filter(
-        user_model.User.id == student_id,
-        user_model.User.teacher_id == teacher_id
-    ).first()
-
-    if not student:
-        raise HTTPException(status_code=404, detail="Öğretmene bağlı böyle bir öğrenci bulunamadı.")
+    # Sadece öğretmenlerin erişmesini sağla
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Sadece kendi bilgilerini görebilsin
+    if current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi öğrencilerinizi görebilirsiniz.")
+    
+    # Öğrencinin bu öğretmene ait olup olmadığını kontrol et
+    student_from_teacher(teacher_id, student_id, db)
 
     # Öğrencinin mood geçmişi
     history = db.query(mood_model.MoodEntry).filter(
@@ -287,7 +318,19 @@ def get_student_history_by_teacher(
     ]
 
 @router.get("/teacher/{teacher_id}/class-summary")
-def get_teacher_class_mood_summary(teacher_id: int, db: Session = Depends(get_db)):
+def get_teacher_class_mood_summary(
+    teacher_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Sadece öğretmenlerin erişmesini sağla
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Sadece kendi bilgilerini görebilsin
+    if current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi sınıfınızı görebilirsiniz.")
+
     # Öğretmene ait öğrencileri bul
     students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
     if not students:
@@ -317,10 +360,21 @@ def get_teacher_class_mood_summary(teacher_id: int, db: Session = Depends(get_db
     }
 
 from sqlalchemy import desc
-from app.models import user as user_model  # Eksikse bunu en üste ekle
 
 @router.get("/teacher/{teacher_id}/students-latest-moods")
-def get_students_latest_moods(teacher_id: int, db: Session = Depends(get_db)):
+def get_students_latest_moods(
+    teacher_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Sadece öğretmenlerin erişmesini sağla
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Sadece kendi öğrencilerini görebilsin
+    if current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi öğrencilerinizi görebilirsiniz.")
+
     # Öğretmenin öğrencilerini bul
     students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
     if not students:
@@ -349,8 +403,18 @@ def get_students_latest_moods(teacher_id: int, db: Session = Depends(get_db)):
     return result
 
 @router.get("/teacher/{teacher_id}/students-mood-chart-data")
-def get_students_mood_chart_data(teacher_id: int, db: Session = Depends(get_db)):
-    from app.models import user as user_model
+def get_students_mood_chart_data(
+    teacher_id: int, 
+    current_user: user_model.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Sadece öğretmenlerin erişmesini sağla
+    if current_user.teacher_id is not None:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir.")
+    
+    # Sadece kendi öğrencilerini görebilsin
+    if current_user.id != teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi öğrencilerinizi görebilirsiniz.")
 
     # Öğretmene bağlı tüm öğrencileri bul
     students = db.query(user_model.User).filter(user_model.User.teacher_id == teacher_id).all()
