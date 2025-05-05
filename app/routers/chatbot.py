@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models import mood as mood_model, user as user_model
+from app.routers.auth import get_current_user, student_from_teacher, same_class_check, teacher_owns_class
 from pydantic import BaseModel
 from collections import Counter
 from typing import List
@@ -20,7 +21,19 @@ MOOD_RESPONSES = {
 }
 
 @router.get("/{user_id}")
-def chatbot_suggestion(user_id: int, db: Session = Depends(get_db)):
+def chatbot_suggestion(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: user_model.User = Depends(get_current_user)
+):
+    # Öğrenci sadece kendi verisini görebilir
+    if current_user.teacher_id is not None and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi bilginizi görebilirsiniz.")
+    
+    # Öğretmen sadece kendi öğrencilerinin verisini görebilir
+    if current_user.teacher_id is None:
+        student_from_teacher(current_user.id, user_id, db)
+    
     last_entry = db.query(mood_model.MoodEntry).filter_by(user_id=user_id).order_by(
         mood_model.MoodEntry.timestamp.desc()
     ).first()
@@ -59,7 +72,24 @@ TEMPLATE_SECTIONS = {
 }
 
 @router.post("/recommend")
-def get_chatbot_recommendation(request: ChatbotRequest, db: Session = Depends(get_db)):
+def get_chatbot_recommendation(
+    request: ChatbotRequest, 
+    db: Session = Depends(get_db),
+    current_user: user_model.User = Depends(get_current_user)
+):
+    # Öğrenci sadece kendi verisini kullanabilir
+    if current_user.teacher_id is not None and current_user.id != request.user_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi bilginizi kullanabilirsiniz.")
+    
+    # Öğrenci aynı sınıftan olmalı
+    if current_user.teacher_id is not None:
+        same_class_check(request.user_id, request.class_id, db)
+    
+    # Öğretmen kendi sınıfını yönetmeli ve kendi öğrencisine ait veri olmalı
+    if current_user.teacher_id is None:
+        teacher_owns_class(current_user.id, request.class_id, db)
+        student_from_teacher(current_user.id, request.user_id, db)
+    
     latest_entry = db.query(mood_model.MoodEntry).filter(
         mood_model.MoodEntry.user_id == request.user_id,
         mood_model.MoodEntry.class_id == request.class_id
