@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Sunumlar - BalanceED</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">BalanceED</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/presentation">Sunumlar</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/ai">AI Sunumlar</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/mood">Ruh Hali</a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    <button class="btn btn-light me-2" onclick="location.href='/auth/login'">Giriş Yap</button>
+                    <button class="btn btn-outline-light" onclick="location.href='/auth/register'">Kayıt Ol</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <h1 class="mb-4">AI ile Sunum Oluştur</h1>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="aiPresentationForm">
+                            <div class="mb-3">
+                                <label for="title" class="form-label">Başlık</label>
+                                <input type="text" class="form-control" id="title" name="title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="content" class="form-label">İçerik</label>
+                                <textarea class="form-control" id="content" name="content" rows="5" required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="template_type" class="form-label">Sunum Şablonu</label>
+                                <select class="form-select" id="template_type" required>
+                                    <option value="balanced">Dengeli</option>
+                                    <option value="interactive">İnteraktif</option>
+                                    <option value="visual">Görsel</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Sunum Oluştur</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">AI Sunum Özellikleri</h5>
+                        <ul class="list-unstyled">
+                            <li class="mb-2">✓ Ruh haline göre içerik</li>
+                            <li class="mb-2">✓ Görsel ve metin dengesi</li>
+                            <li class="mb-2">✓ Etkileşimli öğeler</li>
+                            <li class="mb-2">✓ Öğrenci katılımı</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('aiPresentationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                title: document.getElementById('title').value,
+                content: document.getElementById('content').value,
+                template_type: document.getElementById('template_type').value
+            };
+            
+            try {
+                const response = await fetch('/ai/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    alert('Sunum oluşturuluyor...');
+                    
+                    // Sunum durumunu kontrol et
+                    const checkStatus = async () => {
+                        const statusResponse = await fetch(`/ai/status/${result.analysis_id}`, {
+                            headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                            }
+                        });
+                        const statusData = await statusResponse.json();
+                        
+                        if (statusData.status === 'completed') {
+                            alert('Sunum başarıyla oluşturuldu!');
+                            window.location.href = `/presentation/${result.analysis_id}`;
+                        } else if (statusData.status === 'failed') {
+                            alert('Sunum oluşturulurken bir hata oluştu.');
+                        } else {
+                            setTimeout(checkStatus, 2000); // 2 saniye sonra tekrar kontrol et
+                        }
+                    };
+                    
+                    checkStatus();
+                } else {
+                    const errorData = await response.json();
+                    alert(`Hata: ${errorData.detail || 'Bir hata oluştu. Lütfen tekrar deneyin.'}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Bir hata oluştu. Lütfen tekrar deneyin.');
+            }
+        });
+    </script>
+</body>
+</html> 

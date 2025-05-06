@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BalanceED - Duygu Seçimi</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">BalanceED</a>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <h1 class="mb-4">Duygu Seçimi</h1>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="moodForm">
+                            <div class="mb-3">
+                                <label class="form-label">Öğrencilerinizin ruh halini seçin:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="mood" id="happy" value="happy" required>
+                                    <label class="form-check-label" for="happy">Mutlu</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="mood" id="sad" value="sad">
+                                    <label class="form-check-label" for="sad">Üzgün</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="mood" id="energetic" value="energetic">
+                                    <label class="form-check-label" for="energetic">Enerjik</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="mood" id="tired" value="tired">
+                                    <label class="form-check-label" for="tired">Yorgun</label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Devam Et</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Duygu Seçimi Önemli</h5>
+                        <p class="card-text">Öğrencilerinizin ruh haline göre içerik hazırlamak, öğrenme sürecini daha etkili hale getirir.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('moodForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const mood = document.querySelector('input[name="mood"]:checked').value;
+            localStorage.setItem('selectedMood', mood);
+            window.location.href = '/presentation';
+        });
+    </script>
+</body>
+</html> 

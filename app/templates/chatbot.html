@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant - BalanceED</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .chat-header {
+            background: #4a90e2;
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+        .chat-messages {
+            height: 500px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        .message.user {
+            align-items: flex-end;
+        }
+        .message.bot {
+            align-items: flex-start;
+        }
+        .message-content {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin: 5px 0;
+        }
+        .user .message-content {
+            background: #4a90e2;
+            color: white;
+        }
+        .bot .message-content {
+            background: #f0f2f5;
+            color: #333;
+        }
+        .message-time {
+            font-size: 0.8em;
+            color: #666;
+            margin: 0 5px;
+        }
+        .input-container {
+            padding: 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            gap: 10px;
+        }
+        .mood-selector {
+            padding: 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+        }
+        .mood-btn {
+            margin: 0 5px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 2px solid #4a90e2;
+            background: white;
+            color: #4a90e2;
+            transition: all 0.3s;
+        }
+        .mood-btn:hover, .mood-btn.active {
+            background: #4a90e2;
+            color: white;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            color: #666;
+        }
+        .typing-indicator span {
+            animation: typing 1s infinite;
+            display: inline-block;
+        }
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h3 class="mb-0">AI Assistant</h3>
+        </div>
+        
+        <div class="mood-selector">
+            <button class="mood-btn" data-mood="Yorgun">😴 Yorgun</button>
+            <button class="mood-btn" data-mood="Dalgın">🤔 Dalgın</button>
+            <button class="mood-btn active" data-mood="Normal">😊 Normal</button>
+            <button class="mood-btn" data-mood="Meraklı">🤓 Meraklı</button>
+            <button class="mood-btn" data-mood="Enerjik">⚡ Enerjik</button>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-content">
+                    Merhaba! Ben BalanceED AI Assistant. Size nasıl yardımcı olabilirim?
+                </div>
+                <div class="message-time">Şimdi</div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">
+            <span>.</span><span>.</span><span>.</span>
+        </div>
+        
+        <div class="input-container">
+            <input type="text" id="messageInput" class="form-control" placeholder="Mesajınızı yazın...">
+            <button class="btn btn-primary" onclick="sendMessage()">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentMood = "Normal";
+        
+        // Ruh hali seçimi
+        document.querySelectorAll('.mood-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentMood = this.dataset.mood;
+            });
+        });
+        
+        // Enter tuşu ile mesaj gönderme
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        function addMessage(content, isUser = false) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            const now = new Date();
+            const time = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">${content}</div>
+                <div class="message-time">${time}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function showTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.style.display = 'block';
+        }
+        
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.style.display = 'none';
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Kullanıcı mesajını göster
+            addMessage(message, true);
+            input.value = '';
+            
+            // Yazıyor göstergesini göster
+            showTypingIndicator();
+            
+            try {
+                const response = await fetch('/chatbot/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        user_id: 1, // Test için sabit değer
+                        class_id: 1, // Test için sabit değer
+                        mood: currentMood
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Yazıyor göstergesini gizle
+                hideTypingIndicator();
+                
+                // Bot yanıtını göster
+                addMessage(data.response);
+                
+            } catch (error) {
+                console.error('Hata:', error);
+                hideTypingIndicator();
+                addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.');
+            }
+        }
+    </script>
+</body>
+</html> 
